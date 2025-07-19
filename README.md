@@ -10,10 +10,18 @@ The project consists of the following modules:
 - **FSS**: Configures a File Storage Service for shared storage between Nomad nodes.
 - **Nomad Cluster**: Deploys Nomad servers and clients in a private subnet with Consul for service discovery.
 - **Bastion**: Creates a bastion host in the public subnet for secure access to the private Nomad cluster.
+- **Minio**: Creates a Minio (AWS) instance
 
-Additionally, there's a `clients` directory containing an example client deployment.
+Additionally, there's a `clients` directory containing an example client deployment showing how you can use this repo
+to maintain multiple isolate clusters.
 
 ## Prerequisites
+
+### Internet DNS ("A" record)
+
+For example `nomad.incsteps.com`. You will get the IP to use once deployed the stack (as an output)
+
+### Oracle Cloud Account
 
 ### Terraform
 
@@ -64,7 +72,7 @@ Additionally, there's a `clients` directory containing an example client deploym
 
 ```bash
 git clone <repository-url>
-cd tf-nomad
+cd nomad-oracle
 ```
 
 ### 2. Configure Terraform Variables
@@ -81,9 +89,6 @@ region               = "eu-madrid-1"  # Change to your preferred region
 
 ### 3. Deploy the Infrastructure
 
-
-## Example Client Deployment
-
 The `clients/incsteps` directory contains an example client deployment. To deploy it:
 
 1. Navigate to the client directory:
@@ -97,7 +102,7 @@ Create a priv/pub key to ssh in new machines
    Generating public/private ed25519 key pair.
    Enter file in which to save the key (/home/user/.ssh/id_ed25519):
    ```
-Use "./id_ed25519" to generate in the current directory (private key will git ignored)
+Use "./id_ed25519" to generate in the current directory (key pairs will be git ignored)
 
 
 2. Create a `terraform.tfvars` file based on the example:
@@ -107,29 +112,117 @@ Use "./id_ed25519" to generate in the current directory (private key will git ig
 
 3. Edit the `terraform.tfvars` file with your specific values.
 
+   ```aiignore
+   # clients/client_a/terraform.tfvars
+   
+   # ¡IMPORTANTE! Reemplaza los placeholders con tus valores reales.
+   tenancy_ocid   = "ocid1.tenancy.oc1..aaaaaaaa----------"
+   compartment_id = "ocid1.compartment.oc1..aaaaaaaa--------"
+   oci_region     = "af-johannesburg-1" # Región 
+   client_name    = "incsteps"          # Label to tag resource
+   
+   vcn_cidr_block            = "10.10.0.0/16"
+   vcn_dns_label             = "incsteps"
+   public_subnet_cidr_block  = "10.10.1.0/24"
+   private_subnet_cidr_block = "10.10.2.0/24"
+   ssh_source_cidr           = "x.y.z.w/32" # Your public IP to access bastion
+   
+   ssh_public_key_path  = "./id_ed25519.pub"
+   ssh_private_key_path = "./id_ed25519"
+   
+   nomad_server_count = 1
+   nomad_client_count = 1
+   nomad_version      = "1.9.5"
+   consul_version     = "1.18.0"
+   
+   minio_access_key = "minioadmin"
+   minio_secret_key = "minioadmin"
+   
+   headscale_domain_name="nomad.incsteps.com:443"
+   headscale_email="jorge@incsteps.com"
+   letsencrypt_hostname="nomad.incsteps.com"
+   ```
+
+
 4. Deploy the client:
    ```bash
    terraform init
    terraform apply
    ```
+If all goes well you'll see something as
+
+   ```aiignore
+   bastion_ip = "84.8.132.203"
+   fss_ip = "10.10.2.167"
+   minio_ip = "10.10.2.201"
+   nomad_clients_ips = [
+     "10.10.2.126",
+   ]
+   nomad_server_ip = [
+     "10.10.2.188",
+   ]
+   nomad_url = "http://10.10.2.188:4646"
+   ```
+Update the DNS A record with the bastion_ip value (this is the only public IP)
 
 ## Accessing the Nomad Cluster
 
+All instances have the public key installed so you can ssh into it. As they are in a private network
+you can use bastion as ProxyJump:
+
+```aiignore
+Host incsteps-nomad
+  HostName 10.10.2.188
+  User ubuntu
+  IdentityFile /home/jorge/incsteps/oracle/nomad-oracle/clients/incsteps/id_ed25519
+
+  ProxyJump ubuntu@incsteps-bastion
+
+Host incsteps-bastion
+  HostName 84.8.132.203
+  User ubuntu
+  IdentityFile /home/jorge/incsteps/oracle/nomad-oracle/clients/incsteps/id_ed25519
+
+```
+
+
 1. SSH to the bastion host:
    ```bash
-   ssh -i <your-private-key> opc@<bastion-public-ip>
+   ssh incsteps-bastion
+   ```
+2. SSH to the nomad-server host:
+   ```bash
+   ssh incsteps-nomad
    ```
 
-2. From the bastion, access the Nomad servers or clients:
-   ```bash
-   ssh opc@<nomad-server-private-ip>
-   ```
+## Tailscale
 
-3. Access the Nomad UI by setting up an SSH tunnel:
-   ```bash
-   ssh -i <your-private-key> -L 4646:nomad-server-1:4646 opc@<bastion-public-ip>
-   ```
-   Then open http://localhost:4646 in your browser.
+Central idea of this stack is to have a private network deployed in a remote
+cloud with a Minio + Nomad Cluster (1 server + n clients) where you can 
+run Nextflow pipelines from your localhost
+
+Basically the stack runs a headscale service in the Bastion instance
+and a tailscale node in Nomad-server-1 exposing the private network but 
+we (the DevOps) need to accept the routes:
+
+in a terminal in nomad-server-1 run
+
+$ tailscale up --login-server https://your.domain.com --force-reauth
+
+it will show you an URL. Open it in a browser and you will obtain the command
+to execute in the bastion
+
+open a terminal in the bastion instance and execute the command presented
+in the browser (change <USER> with "bastion")
+
+If all goes well now you can join the tailscale network:
+
+Once installed tailscale in your computer execute
+
+$ sudo tailscale login --login-server=https://nomad.incsteps.com --accept-routes
+
+
+
 
 ## Module Descriptions
 

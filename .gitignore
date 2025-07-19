@@ -17,3 +17,4 @@ Thumbs.db # Windows
 **/id_ed25519.pub
 
 **/.nextflow.log*
+**/.nextflow/
