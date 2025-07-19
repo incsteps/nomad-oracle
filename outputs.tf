@@ -1,0 +1,3 @@
+# outputs.tf
+
+# none
