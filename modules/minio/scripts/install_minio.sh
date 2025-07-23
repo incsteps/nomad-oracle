@@ -48,6 +48,13 @@ sudo systemctl daemon-reload
 sudo systemctl enable minio.service
 sudo systemctl start minio.service
 
+curl https://dl.min.io/client/mc/release/linux-amd64/mc \
+  --create-dirs \
+  -o $HOME/minio-binaries/mc
+chmod +x $HOME/minio-binaries/mc
+echo -en "PATH=\$PATH:$HOME/minio-binaries/ PATH" >> ~/.bash_profile
+
+
 curl -fsSL https://tailscale.com/install.sh | sh
 # tailscale up --login-server https://your.domain.com --force-reauth
 
