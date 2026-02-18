@@ -8,7 +8,6 @@ resource "oci_file_storage_file_system" "this" {
 }
 
 # 2. Oracle Cloud Infrastructure File Storage Mount Target
-# ¡Esta es la configuración correcta, incluyendo la asociación de NSG!
 resource "oci_file_storage_mount_target" "this" {
   compartment_id    = var.compartment_id
   availability_domain = var.availability_domain_name
@@ -17,7 +16,6 @@ resource "oci_file_storage_mount_target" "this" {
   display_name      = "${var.fss_display_name_prefix}-mt"
   hostname_label    = var.fss_mount_target_hostname_label
 
-  # La asociación de NSG va directamente aquí, usando 'nsg_ids'
   nsg_ids           = [var.nsg_id]
 }
 

@@ -14,7 +14,7 @@ variable "shape" {
   type = string
 }
 
-variable "ssh_public_key_path" {
+variable "ssh_public" {
   type        = string
 }
 

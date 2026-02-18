@@ -19,7 +19,7 @@ resource "oci_core_instance" "minio_instance" {
   }
 
   metadata = {
-    ssh_authorized_keys = file(var.ssh_public_key_path)
+    ssh_authorized_keys = var.ssh_public
     user_data           = base64encode(templatefile("${path.module}/scripts/install_minio.sh", {
       minio_access_key     = var.minio_access_key
       minio_secret_key     = var.minio_secret_key

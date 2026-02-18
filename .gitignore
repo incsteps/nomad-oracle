@@ -18,3 +18,5 @@ Thumbs.db # Windows
 
 **/.nextflow.log*
 **/.nextflow/
+
+*.zip

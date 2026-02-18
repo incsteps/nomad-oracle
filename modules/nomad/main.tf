@@ -15,7 +15,7 @@ resource "oci_core_instance" "nomad_server" {
   }
   display_name = "nomad-server-${count.index + 1}"
 
-  shape = var.shape
+  shape = var.server_shape
   shape_config {
     ocpus         = 1
     memory_in_gbs = 16
@@ -38,7 +38,7 @@ resource "oci_core_instance" "nomad_server" {
   }
 
   metadata = {
-    ssh_authorized_keys = file(var.ssh_public_key_path)
+    ssh_authorized_keys = var.ssh_public
     user_data = base64encode(templatefile("${path.module}/cloud-init-server.yaml", {
       consul_retry_join_servers = "nomad-server-1"
       instance_name             = "nomad-server-${count.index + 1}"
@@ -61,7 +61,7 @@ resource "oci_core_instance" "nomad_client" {
   }
   display_name = "nomad-client-${count.index + 1}"
 
-  shape = var.shape
+  shape = var.client_shape
   shape_config {
     ocpus         = 1
     memory_in_gbs = 16
@@ -85,7 +85,7 @@ resource "oci_core_instance" "nomad_client" {
   }
 
   metadata = {
-    ssh_authorized_keys = file(var.ssh_public_key_path)
+    ssh_authorized_keys = var.ssh_public
     user_data = base64encode(templatefile("${path.module}/cloud-init-client.yaml", {
       first_nomad_server_hostname = jsonencode(local.consul_server_hostname)
       consul_retry_join_servers   = jsonencode(local.consul_server_hostnames)
