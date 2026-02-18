@@ -1,7 +1,8 @@
 data "oci_core_services" "all_oci_services" {
   filter {
     name = "name"
-    values = ["All JNB Services In Oracle Services Network"] # TODO: allow ALL instead JNB
+    values = ["All (.+) Services In Oracle Services Network"]
+    regex  = true
   }
 }
 

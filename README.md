@@ -12,9 +12,6 @@ The project consists of the following modules:
 - **Bastion**: Creates a bastion host in the public subnet for secure access to the private Nomad cluster.
 - **Minio**: Creates a Minio (AWS) instance
 
-Additionally, there's a `clients` directory containing an example client deployment showing how you can use this repo
-to maintain multiple isolate clusters.
-
 ## Prerequisites
 
 ### Internet DNS ("A" record)
@@ -75,26 +72,13 @@ git clone <repository-url>
 cd nomad-oracle
 ```
 
-### 2. Configure Terraform Variables
-
-Create a `terraform.tfvars` file in the root directory:
-
-```hcl
-tenancy_ocid         = "ocid1.tenancy.oc1.."
-user_ocid            = "ocid1.user.oc1.."
-fingerprint          = "xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx:xx"
-private_key_path     = "~/.oci/oci_api_key.pem"
-region               = "eu-madrid-1"  # Change to your preferred region
-```
 
 ### 3. Deploy the Infrastructure
 
 The `clients/incsteps` directory contains an example client deployment. To deploy it:
 
-1. Navigate to the client directory:
-   ```bash
-   cd clients/incsteps
-   ```
+1. Prepare keys:
+
 Create a priv/pub key to ssh in new machines
 
    ```bash
@@ -104,47 +88,40 @@ Create a priv/pub key to ssh in new machines
    ```
 Use "./id_ed25519" to generate in the current directory (key pairs will be git ignored)
 
+2. Edit the `terraform.tfvars` file with your specific values.
 
-2. Create a `terraform.tfvars` file based on the example:
-   ```bash
-   cp terraform.tfvars.examples terraform.tfvars
-   ```
 
-3. Edit the `terraform.tfvars` file with your specific values.
-
-   ```aiignore
-   # clients/client_a/terraform.tfvars
+   ```hcl
+   tenancy_ocid         = "ocid1.tenancy.oc1.."
+   tenancy_ocid              = "ocid1.tenancy.oc1..aaa"
+   compartment_ocid          = "ocid1.compartment.oc1..aaa" # IncSteps
+   region                    = "af-johannesburg-1"
    
-   # ¡IMPORTANTE! Reemplaza los placeholders con tus valores reales.
-   tenancy_ocid   = "ocid1.tenancy.oc1..aaaaaaaa----------"
-   compartment_id = "ocid1.compartment.oc1..aaaaaaaa--------"
-   oci_region     = "af-johannesburg-1" # Región 
-   client_name    = "incsteps"          # Label to tag resource
+   project_name              = "incsteps"
    
    vcn_cidr_block            = "10.10.0.0/16"
-   vcn_dns_label             = "incsteps"
    public_subnet_cidr_block  = "10.10.1.0/24"
    private_subnet_cidr_block = "10.10.2.0/24"
-   ssh_source_cidr           = "x.y.z.w/32" # Your public IP to access bastion
+   ssh_source_cidr           = "0.0.0.0/0"
    
-   ssh_public_key_path  = "./id_ed25519.pub"
-   ssh_private_key_path = "./id_ed25519"
+   ssh_public_key_content    = ""
+   dev_ssh_public_key_path   = "~/.ssh/id_ed25519.pub"
    
-   nomad_server_count = 1
-   nomad_client_count = 1
-   nomad_version      = "1.9.5"
-   consul_version     = "1.18.0"
+   bastion_instance_shape    = "VM.Standard.E4.Flex"
+   nomad_server_count        = 1
+   nomad_client_count        = 2
    
-   minio_access_key = "minioadmin"
-   minio_secret_key = "minioadmin"
+   nomad_server_instance_shape = "VM.Standard.E4.Flex"
+   nomad_client_instance_shape = "VM.Standard.E4.Flex"
    
-   headscale_domain_name="nomad.incsteps.com:443"
-   headscale_email="jorge@incsteps.com"
-   letsencrypt_hostname="nomad.incsteps.com"
+   headscale_domain_name = "nomad.incsteps.com"
+   headscale_email = "jorge@incsteps.com"
+   
+   minio_access_key="minioadmin"
+   minio_secret_key="minioadmin"
    ```
 
-
-4. Deploy the client:
+3. Deploy the client:
    ```bash
    terraform init
    terraform apply
@@ -207,7 +184,7 @@ we (the DevOps) need to accept the routes:
 
 in a terminal in nomad-server-1 run
 
-$ tailscale up --login-server https://your.domain.com --force-reauth
+$ sudo tailscale up --login-server https://your.domain.com --force-reauth
 
 it will show you an URL. Open it in a browser and you will obtain the command
 to execute in the bastion
@@ -219,7 +196,7 @@ If all goes well now you can join the tailscale network:
 
 Once installed tailscale in your computer execute
 
-$ sudo tailscale login --login-server=https://nomad.incsteps.com --accept-routes
+$ sudo tailscale login --login-server=https://your.domain.com --accept-routes
 
 
 

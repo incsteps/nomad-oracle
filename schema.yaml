@@ -1,0 +1,184 @@
+title: Nomad Cluster
+description: This is a Stack to deploy a Nomad cluster
+schemaVersion: 1.1.0
+version: "0.0.1"
+
+# URL of Logo Icon used on Application Information tab. You can copy the contentId from the Marketplace listing logo URL in the Marketplace Partner portal.
+# (Optional)
+logoUrl: https://avatars.githubusercontent.com/u/6698688?s=48&v=4
+
+source:
+  type: marketplace
+  reference: 12345
+
+locale: "en"
+variableGroups:
+  - title: "Hidden Variable Group"
+    visible: false
+    variables:
+      #"variables used internally - not exposed to end user"
+      - dev_ssh_public_key_path
+      - region
+      - tenancy_ocid
+      - compartment_ocid
+
+  - title: "Project configuration"
+    variables:
+      - project_name
+
+  - title: "Bastion configuration"
+    variables:
+      - bastion_instance_shape
+
+  - title: "Server nomad configuration"
+    variables:
+      - nomad_server_count
+      - nomad_server_instance_shape
+
+  - title: "Client nomad configuration"
+    variables:
+      - nomad_client_count
+      - nomad_client_instance_shape
+
+  - title: "VPN"
+    variables:
+      - headscale_domain_name
+      - headscale_email
+
+  - title: "Minio"
+    variables:
+      - minio_access_key
+      - minio_secret_key
+
+  - title: "Network Configuration"
+    variables:
+      - ssh_public_key_content
+      - private_subnet_cidr_block
+      - public_subnet_cidr_block
+      - ssh_source_cidr
+      - vcn_cidr_block
+
+
+######################################################
+##############          VARIABLES        #############
+######################################################
+
+variables:
+  region:
+    type: oci:identity:region:name
+    title: "Region"
+    required: true
+
+  compartment_ocid:
+    type: oci:identity:compartment:id
+    required: true
+    title: Compartment OCID
+
+  tenancy_ocid:
+    type: string
+    title: Tenancy ID
+    description: The Oracle Cloud Identifier (OCID) for your tenancy
+    required: true
+
+  dev_ssh_public_key_path:
+    type: string
+    required: false
+
+  project_name:
+    type: string
+    required: true
+    title: Project name
+    description: A lowercase name for your project
+
+  ssh_public_key_content:
+    type: oci:core:ssh:publickey
+    required: true
+    title: Public SSH Key string
+    description: Public SSH Key to access VM via SSH
+
+  bastion_instance_shape:
+    type: oci:core:instanceshape:name
+    required: true
+    title: Instance Shape
+    default: "VM.Standard.E4.Flex"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  nomad_server_instance_shape:
+    type: oci:core:instanceshape:name
+    required: true
+    title: Instance Shape
+    default: "VM.Standard.E4.Flex"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  nomad_client_instance_shape:
+    type: oci:core:instanceshape:name
+    required: true
+    title: Instance Shape
+    default: "VM.Standard.E4.Flex"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  nomad_server_count:
+    type: number
+    required: true
+    title: Number of nodes
+    default: 1
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  nomad_client_count:
+    type: number
+    required: true
+    title: Number of nodes
+    default: 1
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+
+  private_subnet_cidr_block:
+    type: string
+    default: "10.10.2.0/24"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  public_subnet_cidr_block:
+    type: string
+    default: "10.10.1.0/24"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  ssh_source_cidr:
+    type: string
+    default: "0.0.0.0/0"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+  vcn_cidr_block:
+    type: string
+    default: "10.10.0.0/16"
+    dependsOn:
+      compartmentId: ${compartment_ocid}
+
+#############################################
+###########    OUTPUT GROUPS     ############
+#############################################
+
+outputGroups:
+  - title: "Cluster Management"
+    outputs:
+      - bastion_ip
+
+
+#############################################
+##############     OUTPUTS     ##############
+#############################################
+
+outputs:
+
+  bastion_ip:
+    type: ip
+    title: Public IP Address
+
+primaryOutputButton: bastion_ip

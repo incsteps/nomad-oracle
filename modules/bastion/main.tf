@@ -19,7 +19,7 @@ resource "oci_core_instance" "bastion_instance" {
   }
 
   metadata = {
-    ssh_authorized_keys = file(var.ssh_public_key_path)
+    ssh_authorized_keys = var.ssh_public
     user_data = base64encode(templatefile("${path.module}/cloud-init-bastion.yaml", {
       domain_name = var.headscale_domain_name
       email = var.headscale_email
