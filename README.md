@@ -199,7 +199,31 @@ Once installed tailscale in your computer execute
 $ sudo tailscale login --login-server=https://your.domain.com --accept-routes
 
 
+Lastly you need to "join" the headscale network running same tailscale command
 
+$ sudo tailscale login --login-server=https://your.domain.com --accept-routes
+
+Create a key-pair in our minio instance:
+
+```
+ssh -i private-key minio
+cd minio-binaries
+./mc alias set minio http://localhost:9000 minioadmin minioadmin
+./mc admin accesskey create minio
+./mc anonymous set public minio/demo
+(grab the credentials into your nextflow.config)
+```
+
+
+## Nextflow
+
+We'll use a bucket of our minio instance as workdir, so we need to create it:
+
+http://100.64.0.2:9001/ (minioadmin/minioadmin)
+
+Run the main.nf
+
+`nextflow run main.nf -w s3://demo/`
 
 ## Module Descriptions
 
