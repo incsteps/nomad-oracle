@@ -19,11 +19,19 @@ variable "ssh_public" {
   type = string
 }
 
+variable "public_subnet_id" {
+  type = string
+}
+
+variable "public_nsg_id" {
+  type = string
+}
+
 variable "private_subnet_id" {
   type = string
 }
 
-variable "nsg_id" {
+variable "private_nsg_id" {
   type = string
 }
 
@@ -33,8 +41,8 @@ variable "instance_image_ocid" {
 }
 
 variable "nomad_server_count" {
-  type        = number
-  default     = 1
+  type    = number
+  default = 1
   validation {
     condition     = var.nomad_server_count % 2 == 1 && var.nomad_server_count > 0
     error_message = "Nomad server must to be greater than 0 and odd."
@@ -42,16 +50,23 @@ variable "nomad_server_count" {
 }
 
 variable "nomad_client_count" {
+  type    = number
+  default = 0
+}
+
+variable "server_boot_volume_size" {
   type        = number
-  default     = 0
+  default     = 50
+  description = "Boot volume size in GB for server"
+}
+
+variable "client_boot_volume_size" {
+  type        = number
+  default     = 200
+  description = "Boot volume size in GB for clients"
 }
 
 variable "nomad_version" {
-  type        = string
-  default     = "1.11.2"
-}
-
-variable "consul_version" {
-  type        = string
-  default     = "1.18.0"
+  type    = string
+  default = "1.11.2"
 }

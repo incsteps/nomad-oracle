@@ -1,24 +1,27 @@
 # Terraform Nomad Cluster on Oracle Cloud Infrastructure (OCI)
 
-This project provides Terraform modules to deploy a Hashicorp Nomad cluster on Oracle Cloud Infrastructure (OCI). The infrastructure is modularized for flexibility and reusability.
+This project provides Terraform modules to deploy a simplified HashiCorp Nomad cluster on Oracle Cloud Infrastructure (OCI). The infrastructure is modularized for flexibility and reusability.
 
 ## Architecture
 
-The project consists of the following modules:
+The project deploys a minimal, production-ready Nomad cluster with the following components:
 
-- **VCN**: Sets up the networking infrastructure including VCN, subnets, internet gateway, NAT gateway, and security groups.
-- **FSS**: Configures a File Storage Service for shared storage between Nomad nodes.
-- **Nomad Cluster**: Deploys Nomad servers and clients in a private subnet with Consul for service discovery.
-- **Bastion**: Creates a bastion host in the public subnet for secure access to the private Nomad cluster.
-- **Minio**: Creates a Minio (AWS) instance
+- **VCN Module**: Networking infrastructure including VCN, public/private subnets, internet gateway, NAT gateway, and security groups
+- **Nomad Module**: Single ARM-based Nomad server with public IP + scalable x86 Nomad clients in private subnet
+- **Object Storage Module**: OCI Object Storage bucket for cluster-wide data storage
+
+### Infrastructure Overview
+
+- **Nomad Server**: ARM instance (VM.Standard.A1.Flex) in public subnet with 50GB boot disk
+- **Nomad Clients**: x86 instances in private subnet with 200GB boot disks, internet access via NAT
+- **No Consul**: Direct Nomad server-client communication
+- **No Bastion**: Direct SSH access to server via public IP; clients accessible via server as jump host
 
 ## Prerequisites
 
-### Internet DNS ("A" record)
-
-For example `nomad.incsteps.com`. You will get the IP to use once deployed the stack (as an output)
-
 ### Oracle Cloud Account
+
+You'll need an active OCI account with appropriate permissions to create resources.
 
 ### Terraform
 
@@ -69,195 +72,214 @@ For example `nomad.incsteps.com`. You will get the IP to use once deployed the s
 
 ```bash
 git clone <repository-url>
-cd nomad-oracle
+cd oci-vm-nomad
 ```
 
+### 2. Generate SSH Keys
 
-### 3. Deploy the Infrastructure
+Create an SSH key pair for accessing the instances:
 
-The `clients/incsteps` directory contains an example client deployment. To deploy it:
+```bash
+ssh-keygen -t ed25519 -C "nomad-cluster"
+```
 
-1. Prepare keys:
+When prompted for the file location, you can use `./id_ed25519` to save in the current directory (these files are git-ignored).
 
-Create a priv/pub key to ssh in new machines
+### 3. Configure Variables
 
-   ```bash
-   ssh-keygen -t ed25519 -C "a comment"
-   Generating public/private ed25519 key pair.
-   Enter file in which to save the key (/home/user/.ssh/id_ed25519):
-   ```
-Use "./id_ed25519" to generate in the current directory (key pairs will be git ignored)
+Create a `terraform.tfvars` file with your specific values:
 
-2. Edit the `terraform.tfvars` file with your specific values.
+```hcl
+# OCI Configuration
+tenancy_ocid              = "ocid1.tenancy.oc1..aaa..."
+compartment_ocid          = "ocid1.compartment.oc1..aaa..."
+region                    = "us-phoenix-1"
 
+# Project Configuration
+project_name              = "my-nomad-cluster"
 
-   ```hcl
-   tenancy_ocid         = "ocid1.tenancy.oc1.."
-   tenancy_ocid              = "ocid1.tenancy.oc1..aaa"
-   compartment_ocid          = "ocid1.compartment.oc1..aaa" # IncSteps
-   region                    = "af-johannesburg-1"
-   
-   project_name              = "incsteps"
-   
-   vcn_cidr_block            = "10.10.0.0/16"
-   public_subnet_cidr_block  = "10.10.1.0/24"
-   private_subnet_cidr_block = "10.10.2.0/24"
-   ssh_source_cidr           = "0.0.0.0/0"
-   
-   ssh_public_key_content    = ""
-   dev_ssh_public_key_path   = "~/.ssh/id_ed25519.pub"
-   
-   bastion_instance_shape    = "VM.Standard.E4.Flex"
-   nomad_server_count        = 1
-   nomad_client_count        = 2
-   
-   nomad_server_instance_shape = "VM.Standard.E4.Flex"
-   nomad_client_instance_shape = "VM.Standard.E4.Flex"
-   
-   headscale_domain_name = "nomad.incsteps.com"
-   headscale_email = "jorge@incsteps.com"
-   
-   minio_access_key="minioadmin"
-   minio_secret_key="minioadmin"
-   ```
+# Network Configuration
+vcn_cidr_block            = "10.0.0.0/16"
+public_subnet_cidr_block  = "10.0.1.0/24"
+private_subnet_cidr_block = "10.0.2.0/24"
+ssh_source_cidr           = "YOUR_IP/32"  # Your public IP for SSH access
 
-3. Deploy the client:
-   ```bash
-   terraform init
-   terraform apply
-   ```
-If all goes well you'll see something as
+# SSH Key Configuration
+ssh_public_key_content    = ""
+dev_ssh_public_key_path   = "./id_ed25519.pub"  # Path to your public key
 
-   ```aiignore
-   bastion_ip = "84.8.132.203"
-   fss_ip = "10.10.2.167"
-   minio_ip = "10.10.2.201"
-   nomad_clients_ips = [
-     "10.10.2.126",
-   ]
-   nomad_server_ip = [
-     "10.10.2.188",
-   ]
-   nomad_url = "http://10.10.2.188:4646"
-   ```
-Update the DNS A record with the bastion_ip value (this is the only public IP)
+# Nomad Configuration
+nomad_server_count        = 1  # Must be odd number (1, 3, 5, etc.)
+nomad_client_count        = 1  # Can be any number, scales easily
 
-## Accessing the Nomad Cluster
+# Instance Shapes (defaults shown)
+nomad_server_instance_shape = "VM.Standard.A1.Flex"  # ARM
+nomad_client_instance_shape = "VM.Standard3.Flex"    # x86
 
-All instances have the public key installed so you can ssh into it. As they are in a private network
-you can use bastion as ProxyJump:
+# Storage Configuration
+server_boot_volume_size_gb = 50
+client_boot_volume_size_gb = 200
 
-```aiignore
-Host incsteps-nomad
-  HostName 10.10.2.188
+# Object Storage
+object_storage_bucket_name = "my-nomad-storage-bucket"
+```
+
+### 4. Deploy the Infrastructure
+
+Initialize and apply the Terraform configuration:
+
+```bash
+terraform init
+terraform plan
+terraform apply
+```
+
+### 5. Deployment Outputs
+
+After successful deployment, you'll see outputs similar to:
+
+```
+nomad_server_public_ip = "150.136.x.x"
+nomad_server_private_ip = "10.0.1.10"
+nomad_clients_ips = [
+  "10.0.2.20",
+]
+nomad_url = "http://150.136.x.x:4646"
+object_storage_bucket_name = "my-nomad-storage-bucket"
+object_storage_namespace = "your-namespace"
+```
+
+## Accessing the Cluster
+
+### SSH Access
+
+#### Access Nomad Server (Public IP)
+
+```bash
+ssh -i ./id_ed25519 ubuntu@<nomad_server_public_ip>
+```
+
+#### Access Nomad Clients (via Server as Jump Host)
+
+Add to your `~/.ssh/config`:
+
+```
+Host nomad-server
+  HostName <nomad_server_public_ip>
   User ubuntu
-  IdentityFile /home/jorge/incsteps/oracle/nomad-oracle/clients/incsteps/id_ed25519
+  IdentityFile /path/to/id_ed25519
 
-  ProxyJump ubuntu@incsteps-bastion
-
-Host incsteps-bastion
-  HostName 84.8.132.203
+Host nomad-client-1
+  HostName <nomad_client_private_ip>
   User ubuntu
-  IdentityFile /home/jorge/incsteps/oracle/nomad-oracle/clients/incsteps/id_ed25519
-
+  IdentityFile /path/to/id_ed25519
+  ProxyJump nomad-server
 ```
 
+Then:
 
-1. SSH to the bastion host:
-   ```bash
-   ssh incsteps-bastion
-   ```
-2. SSH to the nomad-server host:
-   ```bash
-   ssh incsteps-nomad
-   ```
-
-## Tailscale
-
-Central idea of this stack is to have a private network deployed in a remote
-cloud with a Minio + Nomad Cluster (1 server + n clients) where you can 
-run Nextflow pipelines from your localhost
-
-Basically the stack runs a headscale service in the Bastion instance
-and a tailscale node in Nomad-server-1 exposing the private network but 
-we (the DevOps) need to accept the routes:
-
-in a terminal in nomad-server-1 run
-
-$ sudo tailscale up --login-server https://your.domain.com --force-reauth
-
-it will show you an URL. Open it in a browser and you will obtain the command
-to execute in the bastion
-
-open a terminal in the bastion instance and execute the command presented
-in the browser (change <USER> with "bastion")
-
-If all goes well now you can join the tailscale network:
-
-Once installed tailscale in your computer execute
-
-$ sudo tailscale login --login-server=https://your.domain.com --accept-routes
-
-
-Lastly you need to "join" the headscale network running same tailscale command
-
-$ sudo tailscale login --login-server=https://your.domain.com --accept-routes
-
-Create a key-pair in our minio instance:
-
-```
-ssh -i private-key minio
-cd minio-binaries
-./mc alias set minio http://localhost:9000 minioadmin minioadmin
-./mc admin accesskey create minio
-./mc anonymous set public minio/demo
-(grab the credentials into your nextflow.config)
+```bash
+ssh nomad-server
+ssh nomad-client-1
 ```
 
+### Nomad Web UI
 
-## Nextflow
+Access the Nomad web interface at:
 
-We'll use a bucket of our minio instance as workdir, so we need to create it:
+```
+http://<nomad_server_public_ip>:4646
+```
 
-http://100.64.0.2:9001/ (minioadmin/minioadmin)
+### Nomad CLI
 
-Run the main.nf
+Set the Nomad address:
 
-`nextflow run main.nf -w s3://demo/`
+```bash
+export NOMAD_ADDR=http://<nomad_server_public_ip>:4646
+nomad node status
+nomad server members
+```
+
+## Scaling Clients
+
+To add more Nomad clients, simply update the `nomad_client_count` variable:
+
+```bash
+terraform apply -var="nomad_client_count=3"
+```
+
+New clients will automatically:
+- Be deployed in the private subnet
+- Connect to the Nomad server via private IP
+- Have Docker pre-installed and configured
+- Join the cluster automatically
+
+## OCI Object Storage Access
+
+The cluster includes an OCI Object Storage bucket. To access it from your Nomad jobs:
+
+1. Configure OCI credentials in your job specification
+2. Use the bucket name from the outputs: `object_storage_bucket_name`
+3. Use the namespace from the outputs: `object_storage_namespace`
 
 ## Module Descriptions
 
 ### VCN Module
 
-Creates the network infrastructure including:
+Creates the network infrastructure:
 - Virtual Cloud Network (VCN)
-- Internet Gateway
-- NAT Gateway
-- Service Gateway
-- Public and private subnets
-- Route tables
-- Security groups
+- Internet Gateway (for server public access)
+- NAT Gateway (for client internet access)
+- Public subnet (for Nomad server)
+- Private subnet (for Nomad clients)
+- Security groups (SSH + Nomad ports 4646-4648)
 
-### FSS Module
-
-Sets up a File Storage Service for shared storage:
-- File System
-- Mount Target
-- Export
-
-### Nomad Cluster Module
+### Nomad Module
 
 Deploys the Nomad cluster:
-- Nomad servers (with Consul servers)
-- Nomad clients
-- Cloud-init configuration for automatic setup
+- Single ARM-based Nomad server with public IP
+- Scalable x86-based Nomad clients in private subnet
+- Docker pre-installed on all nodes
+- Automatic cluster formation via cloud-init
+- Configurable boot volume sizes
 
-### Bastion Module
+### Object Storage Module
 
-Creates a bastion host for secure access:
-- Public-facing instance
-- Security group rules for SSH access
-- Cloud-init configuration
+Creates OCI Object Storage:
+- Standard tier bucket
+- Private access (NoPublicAccess)
+- Integrated with cluster namespace
+
+## Cleanup
+
+To destroy all resources:
+
+```bash
+terraform destroy
+```
+
+## Troubleshooting
+
+### Check Nomad Server Status
+
+```bash
+ssh ubuntu@<nomad_server_public_ip>
+sudo systemctl status nomad
+sudo journalctl -u nomad -f
+```
+
+### Check Client Connection
+
+```bash
+ssh -J ubuntu@<nomad_server_public_ip> ubuntu@<client_private_ip>
+sudo systemctl status nomad
+nomad node status
+```
+
+### Firewall Issues
+
+Ensure your `ssh_source_cidr` includes your current public IP address.
 
 ## License
 

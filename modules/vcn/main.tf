@@ -1,6 +1,6 @@
 data "oci_core_services" "all_oci_services" {
   filter {
-    name = "name"
+    name   = "name"
     values = ["All (.+) Services In Oracle Services Network"]
     regex  = true
   }
@@ -70,9 +70,9 @@ resource "oci_core_route_table" "private_rt" {
 
   route_rules {
     network_entity_id = oci_core_service_gateway.this.id
-    destination = data.oci_core_services.all_oci_services.services[0].cidr_block
+    destination       = data.oci_core_services.all_oci_services.services[0].cidr_block
     # Accede al CIDR del primer servicio encontrado
-    destination_type  = "SERVICE_CIDR_BLOCK"
+    destination_type = "SERVICE_CIDR_BLOCK"
   }
 }
 

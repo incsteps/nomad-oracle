@@ -4,21 +4,17 @@ packages:
   - curl
   - wget
   - unzip
-  - jq # Utilidad para parsear JSON
-  - docker-engine # Nomad puede ejecutar trabajos Docker
-  - nfs-utils
+  - jq
 
 runcmd:
-  # Instalar Docker
+  # Install Docker
   - |
-    # Add Docker's official GPG key:
     sudo apt-get update
-    sudo apt-get install ca-certificates curl
+    sudo apt-get install -y ca-certificates curl
     sudo install -m 0755 -d /etc/apt/keyrings
     sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     sudo chmod a+r /etc/apt/keyrings/docker.asc
     
-    # Add the repository to Apt sources:
     echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
     $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | \
@@ -27,177 +23,101 @@ runcmd:
     
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-  # Descargar y descomprimir Consul
+  # Download and install Nomad
   - |
-    wget -q https://releases.hashicorp.com/consul/${consul_version}/consul_${consul_version}_linux_amd64.zip
-    unzip consul_${consul_version}_linux_amd64.zip
-    sudo mv consul /usr/local/bin/
-    sudo chmod +x /usr/local/bin/consul
-    sudo mkdir -p /etc/consul.d /opt/consul/data
-
-  # Descargar y descomprimir Nomad
-  - |
-    wget -q https://releases.hashicorp.com/nomad/${nomad_version}/nomad_${nomad_version}_linux_amd64.zip
-    unzip nomad_${nomad_version}_linux_amd64.zip
+    wget -q https://releases.hashicorp.com/nomad/${nomad_version}/nomad_${nomad_version}_linux_arm64.zip
+    unzip nomad_${nomad_version}_linux_arm64.zip
     sudo mv nomad /usr/local/bin/
     sudo chmod +x /usr/local/bin/nomad
     sudo mkdir -p /etc/nomad.d /opt/nomad/data    
-    sudo chmod -R +r /etc/nomad.d/
-    sudo chmod -R +r /opt/nomad/data
+    sudo chmod -R 755 /etc/nomad.d/
+    sudo chmod -R 755 /opt/nomad/data
 
-  # Obtener IP privada de la instancia (para auto-configuración)
+  # Get instance IPs for configuration
   - |
-    LOCAL_IP=$(hostname -I | awk '{print $1}')
-    echo "Local IP: $LOCAL_IP"
-    sed -i "s|__INSTANCE_PRIVATE_IP__|$LOCAL_IP|g" /etc/consul.d/consul.hcl
-    sed -i "s|__INSTANCE_PRIVATE_IP__|$LOCAL_IP|g" /etc/nomad.d/nomad.hcl
+    PRIVATE_IP=$(hostname -I | awk '{print $1}')
+    PUBLIC_IP=$(curl -s http://169.254.169.254/opc/v1/instance/metadata | jq -r '.publicIp // empty')
+    
+    if [ -z "$PUBLIC_IP" ]; then
+      PUBLIC_IP=$PRIVATE_IP
+    fi
+    
+    sed -i "s|__PRIVATE_IP__|$PRIVATE_IP|g" /etc/nomad.d/nomad.hcl
+    sed -i "s|__PUBLIC_IP__|$PUBLIC_IP|g" /etc/nomad.d/nomad.hcl
 
+  # Configure firewall
   - |
-    sudo iptables -I INPUT -p tcp --dport 8500 -j ACCEPT
     sudo iptables -I INPUT -p tcp --dport 4646 -j ACCEPT
     sudo iptables -I INPUT -p tcp --dport 4647 -j ACCEPT
-    sudo iptables-save -f /etc/iptables/rules.v4
+    sudo iptables -I INPUT -p tcp --dport 4648 -j ACCEPT
+    sudo iptables -I INPUT -p udp --dport 4648 -j ACCEPT
 
+  # Start services
   - |
-    echo "Reloading systemd daemon..."
     sudo systemctl daemon-reload
     sudo systemctl restart docker
-    
-    echo "Enabling and starting Consul service..."
-    sudo systemctl enable consul.service
-    sudo systemctl start consul.service
-
-    echo "Enabling and starting Nomad service..."
     sudo systemctl enable nomad.service
     sudo systemctl start nomad.service
 
-  - |
-    curl -fsSL https://tailscale.com/install.sh | sh
-    #sudo tailscale up --login-server https://your.domain.com --force-reauth
-
 write_files:
-  # Configuración de Consul Server
-  - path: /etc/consul.d/consul.hcl
-    permissions: "0640"
-    owner: root:root
-    content: |
-      data_dir = "/opt/consul/data"
-      client_addr = "0.0.0.0"
-      bind_addr = "0.0.0.0"
-      advertise_addr = "__INSTANCE_PRIVATE_IP__"
-      server = true
-      bootstrap_expect = ${nomad_server_count}
-      # Usamos la variable ya generada por Terraform para el retry_join
-      retry_join = ["${consul_retry_join_servers}"] # <- ¡Aquí se usa la variable de Terraform!
-      performance {
-        raft_multiplier = 1
-      }
-
-  # Configuración de Nomad Server
+  # Nomad Server Configuration
   - path: /etc/nomad.d/nomad.hcl
-    permissions: "0640"
+    permissions: "0644"
     owner: root:root
     content: |
       data_dir = "/opt/nomad/data"
       bind_addr = "0.0.0.0"
+      
       advertise {
-        http = "__INSTANCE_PRIVATE_IP__:4646"
-        rpc = "__INSTANCE_PRIVATE_IP__:4647"
-        serf = "__INSTANCE_PRIVATE_IP__:4648"
+        http = "__PRIVATE_IP__:4646"
+        rpc  = "__PRIVATE_IP__:4647"
+        serf = "__PRIVATE_IP__:4648"
       }
+      
       server {
         enabled = true
-        bootstrap_expect = ${nomad_server_count}
-        # Los servidores Nomad se unen a Consul para auto-descubrimiento
-        #server_join {
-        #  retry_join = ["__INSTANCE_PRIVATE_IP__:4647"]
-        #}
+        bootstrap_expect = 1
       }
+      
       client {
-        enabled = true
-        servers = ["127.0.0.1:4647"] # Cliente Nomad se une al servidor Nomad local
-        options {
-          "driver.docker.enabled" = "true"
-        }
+        enabled = false
       }
+      
       plugin "docker" {
         config {
           allow_privileged = true
-          volumes{
-              enabled = true
-          }
-          gc {
-            image = false
-            image_delay = "1h"
+          volumes {
+            enabled = true
           }
         }
       }
 
-      consul {
-        address = "127.0.0.1:8500"
-      }
-
-  # Systemd service para Consul
-  - path: /etc/systemd/system/consul.service
-    permissions: "0644"
-    owner: root:root
-    content: |
-      [Unit]
-      Description="HashiCorp Consul - A service mesh solution"
-      Documentation=https://www.consul.io/
-      Requires=network-online.target
-      After=network-online.target
-      ConditionFileNotEmpty=/etc/consul.d/consul.hcl
-      
-      [Service]      
-      User=root
-      Group=root
-      ExecStart=/usr/local/bin/consul agent -config-dir=/etc/consul.d/
-      ExecReload=/bin/kill --signal HUP $MAINPID
-      KillMode=process
-      KillSignal=SIGTERM
-      Restart=on-failure
-      LimitNOFILE=65536
-      
-      [Install]
-      WantedBy=multi-user.target
-
-
-  # Systemd service para Nomad
+  # Systemd service for Nomad
   - path: /etc/systemd/system/nomad.service
     permissions: "0644"
     owner: root:root
     content: |
       [Unit]
-      Description="HashiCorp Nomad"
+      Description=HashiCorp Nomad
       Documentation=https://www.nomadproject.io/
       Requires=network-online.target
-      After=network-online.target consul.service
+      After=network-online.target docker.service
+      
       [Service]
-      # Nomad clients need to be run as "root" whereas Nomad servers should be run as
-      # the "nomad" user. Please change this if needed.
       User=root
       Group=root
-            
-      EnvironmentFile=-/etc/nomad.d/nomad.env
+      ExecStart=/usr/local/bin/nomad agent -config=/etc/nomad.d
       ExecReload=/bin/kill -HUP $MAINPID
-      ExecStart=/usr/local/bin/nomad agent -config /etc/nomad.d
       KillMode=process
       KillSignal=SIGINT
       LimitNOFILE=65536
       LimitNPROC=infinity
       Restart=on-failure
       RestartSec=2
-      
       TasksMax=infinity
-      
-      # Nomad Server agents should never be force killed,
-      # so here we disable OOM (out of memory) killing for this unit.
-      # However, you may wish to change this for Client agents, since
-      # the workloads that Nomad places may be more important
-      # than the Nomad agent itself.
       OOMScoreAdjust=-1000
+      
       [Install]
       WantedBy=multi-user.target
 
-final_message: "Nomad server configured!"
+final_message: "Nomad server configured and started!"

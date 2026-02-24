@@ -4,36 +4,42 @@ resource "oci_core_network_security_group" "public_nsg" {
   display_name   = "public-nsg"
 }
 
-# Reglas de Seguridad para el Bastión
-resource "oci_core_network_security_group_security_rule" "bastion_rules" {
+# Security rules for Nomad Server (public)
+resource "oci_core_network_security_group_security_rule" "public_rules" {
   for_each = {
-    ssh_ingress_external = {
+    ssh_ingress = {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
-      ports = [22], description = "Permitir SSH (puerto 22) al Bastion desde CIDR de origen definido."
+      ports     = [22], description = "Allow SSH from specified CIDR"
     },
-    # --- headscale Ingress ---
-    headscale_ingress = {
-      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = "0.0.0.0/0",
-      ports = [443], description = "SSL Headscale."
+    nomad_http_ingress_vcn = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports     = [4646], description = "Allow Nomad HTTP API from VCN"
     },
-    headscale_oracle = {
-      direction = "INGRESS", protocol = "17", source_type = "CIDR_BLOCK", source = "0.0.0.0/0",
-      ports = [41641], description = "Requires for oracle cloud"
+    nomad_rpc_ingress_vcn = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports     = [4647], description = "Allow Nomad RPC from VCN"
     },
-    # Egreso a Internet (se mantiene)
+    nomad_serf_tcp_ingress_vcn = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports     = [4648], description = "Allow Nomad Serf TCP from VCN"
+    },
+    nomad_serf_udp_ingress_vcn = {
+      direction = "INGRESS", protocol = "17", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports     = [4648], description = "Allow Nomad Serf UDP from VCN"
+    },
     egress_to_internet = {
-      direction = "EGRESS", protocol = "All", destination_type = "CIDR_BLOCK", destination = "0.0.0.0/0",
-      description = "Permitir todo el tráfico de salida desde el Bastion a Internet."
+      direction   = "EGRESS", protocol = "All", destination_type = "CIDR_BLOCK", destination = "0.0.0.0/0",
+      description = "Allow all outbound traffic"
     }
   }
 
   network_security_group_id = oci_core_network_security_group.public_nsg.id
   direction                 = each.value.direction
   protocol                  = each.value.protocol
-  source_type = lookup(each.value, "source_type", null)
-  source = lookup(each.value, "source", null)
-  destination_type = lookup(each.value, "destination_type", null)
-  destination = lookup(each.value, "destination", null)
+  source_type               = lookup(each.value, "source_type", null)
+  source                    = lookup(each.value, "source", null)
+  destination_type          = lookup(each.value, "destination_type", null)
+  destination               = lookup(each.value, "destination", null)
   description               = each.value.description
 
   dynamic "tcp_options" {

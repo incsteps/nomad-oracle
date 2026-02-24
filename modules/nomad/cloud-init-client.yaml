@@ -5,20 +5,16 @@ packages:
   - wget
   - unzip
   - jq
-  - docker-engine
-  - nfs-utils
 
 runcmd:
-  # Instalar Docker
+  # Install Docker
   - |
-    # Add Docker's official GPG key:
     sudo apt-get update
-    sudo apt-get install ca-certificates curl
+    sudo apt-get install -y ca-certificates curl
     sudo install -m 0755 -d /etc/apt/keyrings
     sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     sudo chmod a+r /etc/apt/keyrings/docker.asc
     
-    # Add the repository to Apt sources:
     echo \
     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
     $(. /etc/os-release && echo "$UBUNTU_CODENAME") stable" | \
@@ -27,79 +23,86 @@ runcmd:
     
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-  # Descargar y descomprimir Nomad
+  # Download and install Nomad
   - |
     wget -q https://releases.hashicorp.com/nomad/${nomad_version}/nomad_${nomad_version}_linux_amd64.zip
     unzip nomad_${nomad_version}_linux_amd64.zip
     sudo mv nomad /usr/local/bin/
     sudo chmod +x /usr/local/bin/nomad
     sudo mkdir -p /etc/nomad.d /opt/nomad/data    
-    sudo chmod -R +r /etc/nomad.d/
-    sudo chmod -R +r /opt/nomad/data
+    sudo chmod -R 755 /etc/nomad.d/
+    sudo chmod -R 755 /opt/nomad/data
 
-  # Obtener IP privada de la instancia (para auto-configuración)
+  # Configure Nomad with server IP
   - |
-    LOCAL_IP=$(hostname -I | awk '{print $1}')
-    echo "Local IP: $LOCAL_IP"
-    sed -i "s|__INSTANCE_PRIVATE_IP__|${first_nomad_server_hostname}|g" /etc/nomad.d/nomad.hcl
+    PRIVATE_IP=$(hostname -I | awk '{print $1}')
+    sed -i "s|__PRIVATE_IP__|$PRIVATE_IP|g" /etc/nomad.d/nomad.hcl
+    sed -i "s|__SERVER_IP__|${nomad_server_ip}|g" /etc/nomad.d/nomad.hcl
 
+  # Start services
   - |
-    echo "Reloading systemd daemon..."
     sudo systemctl daemon-reload
     sudo systemctl restart docker
-    
-    echo "Enabling and starting Nomad service..."
     sudo systemctl enable nomad.service
     sudo systemctl start nomad.service
 
 write_files:
-  # Configuración de Nomad Client
+  # Nomad Client Configuration
   - path: /etc/nomad.d/nomad.hcl
-    permissions: "0640"
+    permissions: "0644"
     owner: root:root
     content: |
       data_dir = "/opt/nomad/data"
       bind_addr = "0.0.0.0"
+      
+      advertise {
+        http = "__PRIVATE_IP__:4646"
+        rpc  = "__PRIVATE_IP__:4647"
+        serf = "__PRIVATE_IP__:4648"
+      }
+      
       client {
         enabled = true
+        servers = ["__SERVER_IP__:4647"]
         options {
           "driver.docker.enabled" = "true"
         }
       }
+      
       plugin "docker" {
         config {
           allow_privileged = true
-          volumes{
-              enabled = true
-          }
-          gc {
-            image = false
-            image_delay = "1h"
+          volumes {
+            enabled = true
           }
         }
       }
 
-      consul {
-        address = "__INSTANCE_PRIVATE_IP__:8500" # Se conecta a Consul local
-      }
-
-  # Systemd service para Nomad
+  # Systemd service for Nomad
   - path: /etc/systemd/system/nomad.service
     permissions: "0644"
     owner: root:root
     content: |
       [Unit]
-      Description="HashiCorp Nomad"
+      Description=HashiCorp Nomad
       Documentation=https://www.nomadproject.io/
       Requires=network-online.target
-      After=network-online.target consul.service
+      After=network-online.target docker.service
+      
       [Service]
+      User=root
+      Group=root
       ExecStart=/usr/local/bin/nomad agent -config=/etc/nomad.d
       ExecReload=/bin/kill -HUP $MAINPID
       KillMode=process
-      Restart=on-failure
+      KillSignal=SIGINT
       LimitNOFILE=65536
+      LimitNPROC=infinity
+      Restart=on-failure
+      RestartSec=2
+      TasksMax=infinity
+      
       [Install]
       WantedBy=multi-user.target
 
-final_message: "Nomad client configured!"
+final_message: "Nomad client configured and started!"
