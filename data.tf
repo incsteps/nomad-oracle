@@ -2,12 +2,24 @@ data "oci_identity_availability_domains" "this" {
   compartment_id = var.tenancy_ocid
 }
 
-data "oci_core_images" "ubuntu" {
+data "oci_core_images" "ubuntu_arm" {
   compartment_id   = var.compartment_ocid
   operating_system = "Canonical Ubuntu"
   filter {
     name   = "display_name"
-    values = ["^Canonical-Ubuntu-24.04-2026(.+)$"]
+    values = ["^Canonical-Ubuntu-24.04-aarch64(.*)$"]
+    regex  = true
+  }
+  sort_by    = "TIMECREATED"
+  sort_order = "DESC"
+}
+
+data "oci_core_images" "ubuntu_x86" {
+  compartment_id   = var.compartment_ocid
+  operating_system = "Canonical Ubuntu"
+  filter {
+    name   = "display_name"
+    values = ["^Canonical-Ubuntu-24\\.04-2026\\.01\\.29-0$"]
     regex  = true
   }
   sort_by    = "TIMECREATED"
@@ -23,5 +35,5 @@ data "oci_identity_region_subscriptions" "home_region" {
 }
 
 data "oci_objectstorage_namespace" "this" {
-  compartment_id = var.tenancy_ocid
+  compartment_id = var.compartment_ocid
 }

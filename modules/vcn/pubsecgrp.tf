@@ -9,11 +9,23 @@ resource "oci_core_network_security_group_security_rule" "public_rules" {
   for_each = {
     ssh_ingress = {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
-      ports     = [22], description = "Allow SSH from specified CIDR"
+      ports = [22], description = "Allow SSH from specified CIDR"
+    },
+    nomad_http_ingress_public = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
+      ports = [4646], description = "Allow Nomad HTTP API from user IP"
+    },
+    minio_api_ingress = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
+      ports = [9000], description = "Allow MinIO S3 API from user IP"
+    },
+    minio_console_ingress = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
+      ports = [9001], description = "Allow MinIO Console from user IP"
     },
     nomad_http_ingress_vcn = {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
-      ports     = [4646], description = "Allow Nomad HTTP API from VCN"
+      ports = [4646], description = "Allow Nomad HTTP API from VCN"
     },
     nomad_rpc_ingress_vcn = {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,

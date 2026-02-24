@@ -8,14 +8,14 @@ resource "oci_core_instance" "nomad_server" {
 
   shape = var.server_shape
   shape_config {
-    ocpus         = 2
-    memory_in_gbs = 12
+    ocpus         = var.server_ocpus
+    memory_in_gbs = var.server_memory_gb
   }
 
   source_details {
     boot_volume_size_in_gbs         = var.server_boot_volume_size
     is_preserve_boot_volume_enabled = false
-    source_id                       = var.instance_image_ocid
+    source_id                       = var.server_image_ocid
     source_type                     = "image"
   }
 
@@ -33,7 +33,9 @@ resource "oci_core_instance" "nomad_server" {
   metadata = {
     ssh_authorized_keys = var.ssh_public
     user_data = base64encode(templatefile("${path.module}/cloud-init-server.yaml", {
-      nomad_version = var.nomad_version
+      nomad_version       = var.nomad_version
+      minio_root_user     = var.minio_root_user
+      minio_root_password = var.minio_root_password
     }))
   }
 }
@@ -48,14 +50,14 @@ resource "oci_core_instance" "nomad_client" {
 
   shape = var.client_shape
   shape_config {
-    ocpus         = 4
-    memory_in_gbs = 12
+    ocpus         = var.client_ocpus
+    memory_in_gbs = var.client_memory_gb
   }
 
   source_details {
     boot_volume_size_in_gbs         = var.client_boot_volume_size
     is_preserve_boot_volume_enabled = false
-    source_id                       = var.instance_image_ocid
+    source_id                       = var.client_image_ocid
     source_type                     = "image"
   }
 

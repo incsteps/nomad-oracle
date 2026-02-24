@@ -39,7 +39,7 @@ runcmd:
     sed -i "s|__PRIVATE_IP__|$PRIVATE_IP|g" /etc/nomad.d/nomad.hcl
     sed -i "s|__SERVER_IP__|${nomad_server_ip}|g" /etc/nomad.d/nomad.hcl
 
-  # Start services
+  # Start services (token will be set via cloud-init write_files)
   - |
     sudo systemctl daemon-reload
     sudo systemctl restart docker
@@ -69,6 +69,10 @@ write_files:
         }
       }
       
+      acl {
+        enabled = true
+      }
+      
       plugin "docker" {
         config {
           allow_privileged = true
@@ -78,7 +82,7 @@ write_files:
         }
       }
 
-  # Systemd service for Nomad
+  # Systemd service for Nomad (with token sourcing)
   - path: /etc/systemd/system/nomad.service
     permissions: "0644"
     owner: root:root
@@ -92,6 +96,8 @@ write_files:
       [Service]
       User=root
       Group=root
+      EnvironmentFile=-/etc/nomad.d/secrets/client-token.env
+      ExecStartPre=/bin/bash -c 'if [ -f /etc/nomad.d/secrets/client-token.txt ]; then echo "NOMAD_TOKEN=$(cat /etc/nomad.d/secrets/client-token.txt)" > /etc/nomad.d/secrets/client-token.env; fi'
       ExecStart=/usr/local/bin/nomad agent -config=/etc/nomad.d
       ExecReload=/bin/kill -HUP $MAINPID
       KillMode=process

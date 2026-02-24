@@ -19,4 +19,10 @@ Thumbs.db # Windows
 **/.nextflow.log*
 **/.nextflow/
 
+# Secrets and tokens
+minio-secrets.env
+nomad-token.env
+**/*secrets*.env
+**/*token*.env
+
 *.zip

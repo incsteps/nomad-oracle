@@ -52,6 +52,12 @@ runcmd:
     sudo iptables -I INPUT -p tcp --dport 4648 -j ACCEPT
     sudo iptables -I INPUT -p udp --dport 4648 -j ACCEPT
 
+  # Create secrets directory
+  - |
+    sudo mkdir -p /etc/nomad.d/secrets
+    sudo chmod 700 /etc/nomad.d/secrets
+    sudo chmod 600 /etc/nomad.d/secrets/minio.env
+
   # Start services
   - |
     sudo systemctl daemon-reload
@@ -59,7 +65,75 @@ runcmd:
     sudo systemctl enable nomad.service
     sudo systemctl start nomad.service
 
+  # Bootstrap Nomad ACL and save tokens
+  - |
+    # Wait for Nomad to be ready
+    sleep 30
+    for i in {1..30}; do
+      if nomad status &>/dev/null; then
+        echo "Nomad is ready"
+        break
+      fi
+      echo "Waiting for Nomad to be ready... ($i/30)"
+      sleep 2
+    done
+    
+    # Bootstrap ACL system and save the management token
+    if [ ! -f /etc/nomad.d/secrets/bootstrap-token.json ]; then
+      nomad acl bootstrap -json > /etc/nomad.d/secrets/bootstrap-token.json 2>&1
+      if [ $? -eq 0 ]; then
+        chmod 600 /etc/nomad.d/secrets/bootstrap-token.json
+        
+        # Extract secret ID (management token)
+        MANAGEMENT_TOKEN=$(jq -r '.SecretID' /etc/nomad.d/secrets/bootstrap-token.json)
+        
+        # Save in a simple format for easy sourcing
+        echo "NOMAD_TOKEN=$MANAGEMENT_TOKEN" | sudo tee /etc/nomad.d/secrets/nomad-token.env > /dev/null
+        echo "NOMAD_ADDR=http://127.0.0.1:4646" | sudo tee -a /etc/nomad.d/secrets/nomad-token.env > /dev/null
+        chmod 600 /etc/nomad.d/secrets/nomad-token.env
+        
+        echo "Nomad ACL bootstrap completed successfully"
+        
+        # Create node policy for client registration
+        cat <<EOF | sudo tee /etc/nomad.d/secrets/node-policy.hcl > /dev/null
+node {
+  policy = "write"
+}
+
+agent {
+  policy = "read"
+}
+EOF
+        
+        # Apply the node policy
+        export NOMAD_TOKEN=$MANAGEMENT_TOKEN
+        nomad acl policy apply -description "Node policy for clients" node-policy /etc/nomad.d/secrets/node-policy.hcl
+        
+        # Create client token and save it
+        nomad acl token create -name="client-node-token" -policy=node-policy -type=client -json > /etc/nomad.d/secrets/client-token.json 2>&1
+        if [ $? -eq 0 ]; then
+          CLIENT_TOKEN=$(jq -r '.SecretID' /etc/nomad.d/secrets/client-token.json)
+          echo "$CLIENT_TOKEN" | sudo tee /etc/nomad.d/secrets/client-token.txt > /dev/null
+          chmod 600 /etc/nomad.d/secrets/client-token.txt
+          chmod 600 /etc/nomad.d/secrets/client-token.json
+          echo "Client token created successfully: $CLIENT_TOKEN"
+        else
+          echo "Failed to create client token"
+        fi
+      else
+        echo "ACL bootstrap failed or already completed"
+      fi
+    fi
+
 write_files:
+  # MinIO Credentials
+  - path: /etc/nomad.d/secrets/minio.env
+    permissions: "0600"
+    owner: root:root
+    content: |
+      MINIO_ROOT_USER=${minio_root_user}
+      MINIO_ROOT_PASSWORD=${minio_root_password}
+
   # Nomad Server Configuration
   - path: /etc/nomad.d/nomad.hcl
     permissions: "0644"
@@ -77,6 +151,10 @@ write_files:
       server {
         enabled = true
         bootstrap_expect = 1
+      }
+      
+      acl {
+        enabled = true
       }
       
       client {

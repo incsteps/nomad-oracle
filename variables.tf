@@ -74,13 +74,49 @@ variable "server_boot_volume_size_gb" {
   description = "Boot volume size in GB for Nomad server"
 }
 
+variable "server_ocpus" {
+  type        = number
+  default     = 2
+  description = "Number of OCPUs for Nomad server"
+}
+
+variable "server_memory_gb" {
+  type        = number
+  default     = 12
+  description = "Memory in GB for Nomad server"
+}
+
 variable "client_boot_volume_size_gb" {
   type        = number
   default     = 200
   description = "Boot volume size in GB for Nomad clients"
 }
 
+variable "client_ocpus" {
+  type        = number
+  default     = 4
+  description = "Number of OCPUs for Nomad clients"
+}
+
+variable "client_memory_gb" {
+  type        = number
+  default     = 12
+  description = "Memory in GB for Nomad clients"
+}
+
 variable "object_storage_bucket_name" {
   type        = string
   description = "Name for the OCI Object Storage bucket"
+}
+
+variable "minio_root_user" {
+  type        = string
+  description = "MinIO root username"
+  sensitive   = true
+}
+
+variable "minio_root_password" {
+  type        = string
+  description = "MinIO root password"
+  sensitive   = true
 }

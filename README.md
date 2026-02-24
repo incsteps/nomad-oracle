@@ -4,11 +4,13 @@ This project provides Terraform modules to deploy a simplified HashiCorp Nomad c
 
 ## Architecture
 
-The project deploys a minimal, production-ready Nomad cluster with the following components:
+The project deploys a secure, production-ready Nomad cluster with the following components:
 
 - **VCN Module**: Networking infrastructure including VCN, public/private subnets, internet gateway, NAT gateway, and security groups
 - **Nomad Module**: Single ARM-based Nomad server with public IP + scalable x86 Nomad clients in private subnet
 - **Object Storage Module**: OCI Object Storage bucket for cluster-wide data storage
+- **ACL Security**: Nomad Access Control Lists enabled, requiring tokens for all API requests
+- **Secrets Management**: Automated credential generation and secure storage for MinIO and Nomad tokens
 
 ### Infrastructure Overview
 
@@ -66,7 +68,24 @@ You'll need an active OCI account with appropriate permissions to create resourc
 
 2. Upload the public key to your OCI user account through the OCI Console.
 
-## Deployment Instructions
+## Quick Start
+
+For a guided deployment with automated credential generation:
+
+```bash
+./scripts/quick-start.sh
+```
+
+This script will:
+1. Generate secure MinIO credentials
+2. Initialize Terraform
+3. Deploy the infrastructure
+4. Retrieve and save the Nomad ACL token
+5. Provide next steps for MinIO deployment
+
+For detailed step-by-step instructions, see `DEPLOYMENT_GUIDE.md`.
+
+## Manual Deployment Instructions
 
 ### 1. Clone the Repository
 
@@ -93,27 +112,27 @@ Create a `terraform.tfvars` file with your specific values:
 # OCI Configuration
 tenancy_ocid              = "ocid1.tenancy.oc1..aaa..."
 compartment_ocid          = "ocid1.compartment.oc1..aaa..."
-region                    = "us-phoenix-1"
+region                    = "af-johannesburg-1"  # or any OCI region
 
 # Project Configuration
-project_name              = "my-nomad-cluster"
+project_name              = "nomadjhb"  # Must be DNS-compatible (no hyphens)
 
 # Network Configuration
 vcn_cidr_block            = "10.0.0.0/16"
 public_subnet_cidr_block  = "10.0.1.0/24"
 private_subnet_cidr_block = "10.0.2.0/24"
-ssh_source_cidr           = "YOUR_IP/32"  # Your public IP for SSH access
+ssh_source_cidr           = "YOUR_IP/32"  # Your public IP for SSH and Nomad API access
 
 # SSH Key Configuration
 ssh_public_key_content    = ""
-dev_ssh_public_key_path   = "./id_ed25519.pub"  # Path to your public key
+dev_ssh_public_key_path   = "~/.ssh/id_ed25519.pub"  # Path to your public key
 
 # Nomad Configuration
 nomad_server_count        = 1  # Must be odd number (1, 3, 5, etc.)
 nomad_client_count        = 1  # Can be any number, scales easily
 
 # Instance Shapes (defaults shown)
-nomad_server_instance_shape = "VM.Standard.A1.Flex"  # ARM
+nomad_server_instance_shape = "VM.Standard.A1.Flex"  # ARM - Free tier eligible
 nomad_client_instance_shape = "VM.Standard3.Flex"    # x86
 
 # Storage Configuration
@@ -121,8 +140,22 @@ server_boot_volume_size_gb = 50
 client_boot_volume_size_gb = 200
 
 # Object Storage
-object_storage_bucket_name = "my-nomad-storage-bucket"
+object_storage_bucket_name = "nomad-jhb-storage"  # Must be unique
+
+# MinIO Credentials (generate using ./scripts/generate-minio-secrets.sh)
+minio_root_user     = "xxxxxxxxxxxx"  # From minio-secrets.env
+minio_root_password = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"  # From minio-secrets.env
 ```
+
+**Important Configuration Notes:**
+
+- **OCI Profile**: The configuration uses the DEFAULT profile from `~/.oci/config`. If you need to use a different profile, set the `OCI_CLI_PROFILE` environment variable or modify `providers.tf`.
+- **DNS Labels**: The `project_name` must not contain hyphens as OCI DNS labels don't allow them. Use alphanumeric characters only.
+- **Region**: Ensure your tenancy/compartment has access to the chosen region. The provider will use the region from your tfvars, not from the OCI config file.
+- **IP Whitelisting**: The `ssh_source_cidr` controls access to both SSH (port 22) and Nomad HTTP API (port 4646). Update this if your IP changes.
+- **Image Selection**: The deployment automatically selects the latest Ubuntu 24.04 images:
+  - ARM64 (aarch64) for the server
+  - x86_64 for the clients
 
 ### 4. Deploy the Infrastructure
 
@@ -130,9 +163,17 @@ Initialize and apply the Terraform configuration:
 
 ```bash
 terraform init
+
+# Explicitly set region if needed (overrides OCI config)
+TF_VAR_region=af-johannesburg-1 terraform plan
+TF_VAR_region=af-johannesburg-1 terraform apply
+
+# Or if region is in terraform.tfvars
 terraform plan
 terraform apply
 ```
+
+**Deployment Time**: Initial deployment takes approximately 3-5 minutes. The cloud-init scripts install Docker and Nomad, which may take an additional 1-2 minutes to complete after the instances are created.
 
 ### 5. Deployment Outputs
 
@@ -193,12 +234,39 @@ http://<nomad_server_public_ip>:4646
 
 ### Nomad CLI
 
-Set the Nomad address:
+**Important**: This cluster has ACL enabled. You need a token to access the Nomad API.
+
+#### Retrieve the Bootstrap Token
 
 ```bash
+# SSH to server
+ssh -i ./id_ed25519 ubuntu@<nomad_server_public_ip>
+
+# Get the management token
+sudo cat /etc/nomad.d/secrets/nomad-token.env
+```
+
+#### Configure Local CLI
+
+```bash
+# Set Nomad address and token
 export NOMAD_ADDR=http://<nomad_server_public_ip>:4646
+export NOMAD_TOKEN=<token_from_above>
+
+# Test authentication
 nomad node status
 nomad server members
+
+# Save to shell profile for persistence
+echo "export NOMAD_ADDR=http://<nomad_server_public_ip>:4646" >> ~/.bashrc
+echo "export NOMAD_TOKEN=<token>" >> ~/.bashrc
+```
+
+Alternatively, if you used `quick-start.sh`, the token is saved in `nomad-token.env`:
+
+```bash
+source nomad-token.env
+nomad status
 ```
 
 ## Scaling Clients
@@ -261,6 +329,53 @@ terraform destroy
 
 ## Troubleshooting
 
+### Cannot Access Nomad API
+
+If `nomad node status` times out:
+
+1. **Check firewall rules**: Ensure your IP is whitelisted in `ssh_source_cidr`
+2. **Verify Nomad is running**:
+   ```bash
+   ssh ubuntu@<nomad_server_public_ip>
+   sudo systemctl status nomad
+   ```
+3. **Check if cloud-init completed**:
+   ```bash
+   ssh ubuntu@<nomad_server_public_ip>
+   sudo cloud-init status
+   ```
+
+### Wrong Region Deployment
+
+If resources are created in the wrong region (e.g., Frankfurt instead of Johannesburg):
+
+1. Destroy resources: `terraform destroy`
+2. Explicitly set region: `TF_VAR_region=af-johannesburg-1 terraform apply`
+3. Ensure your OCI profile's region doesn't override the tfvars region
+
+### DNS Label Errors
+
+If you get "DNS Label does not follow Oracle requirements":
+
+- Remove hyphens from `project_name` in terraform.tfvars
+- Use only alphanumeric characters (e.g., `nomadjhb` instead of `nomad-jhb`)
+
+### Image/Shape Compatibility Issues
+
+If you get "Shape X is not valid for image Y":
+
+- ARM shapes (VM.Standard.A1.Flex) require ARM64 (aarch64) images
+- x86 shapes (VM.Standard3.Flex) require x86_64 images
+- The configuration automatically selects the correct images for each architecture
+
+### Namespace Mismatch Errors
+
+If Object Storage creation fails with namespace mismatch:
+
+- The namespace is tied to your OCI tenancy, not the region
+- Ensure you're using the correct tenancy OCID in terraform.tfvars
+- The namespace is auto-detected from your tenancy
+
 ### Check Nomad Server Status
 
 ```bash
@@ -277,9 +392,12 @@ sudo systemctl status nomad
 nomad node status
 ```
 
-### Firewall Issues
+### View Cloud-Init Logs
 
-Ensure your `ssh_source_cidr` includes your current public IP address.
+```bash
+ssh ubuntu@<nomad_server_public_ip>
+sudo cat /var/log/cloud-init-output.log
+```
 
 ## License
 
