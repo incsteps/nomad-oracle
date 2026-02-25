@@ -91,7 +91,7 @@ variable "client_ocpus" {
 
 variable "client_memory_gb" {
   type        = number
-  default     = 12
+  default     = 18
   description = "Memory in GB for clients"
 }
 
