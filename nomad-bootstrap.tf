@@ -77,7 +77,10 @@ provider "nomad" {
 resource "nomad_job" "minio" {
   depends_on = [data.external.nomad_bootstrap_token]
 
-  jobspec = file("${path.module}/nomad-jobs/minio-updated.nomad")
+  jobspec = templatefile("${path.module}/nomad-jobs/minio.nomad", {
+    minio_root_user     = var.minio_root_user
+    minio_root_password = var.minio_root_password
+  })
 
   # Prevent job from being stopped on destroy
   purge_on_destroy = false

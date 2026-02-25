@@ -1,1 +1,3 @@
 nextflow.ignore.config
+nf-*-reports.tsv
+work/

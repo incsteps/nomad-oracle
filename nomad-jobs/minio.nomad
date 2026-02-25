@@ -35,29 +35,21 @@ job "minio" {
         ]
       }
 
-      # Load secrets from file on the host
-      template {
-        data = <<EOH
-{{ with file "/etc/nomad.d/secrets/minio.env" -}}
-{{ . }}
-{{- end }}
-EOH
-        destination = "secrets/minio.env"
-        env         = true
-      }
-
       env {
-        MINIO_BROWSER = "on"
+        MINIO_ROOT_USER     = "${minio_root_user}"
+        MINIO_ROOT_PASSWORD = "${minio_root_password}"
+        MINIO_BROWSER       = "on"
       }
 
       resources {
-        cpu    = 1000  # 1 CPU
-        memory = 2048  # 2 GB RAM
+        cpu    = 2000  # 2 CPUs
+        memory = 4096  # 4 GB RAM
       }
 
       service {
         name = "minio-api"
         port = "api"
+        provider = "nomad"
         
         tags = [
           "minio",
@@ -76,6 +68,7 @@ EOH
       service {
         name = "minio-console"
         port = "console"
+        provider = "nomad"
         
         tags = [
           "minio",

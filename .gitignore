@@ -26,5 +26,8 @@ nomad-token.env
 **/*token*.env
 
 *.zip
+plan.out
 generated
 results
+work/
+nf-*-reports.tsv
