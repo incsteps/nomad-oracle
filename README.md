@@ -131,7 +131,7 @@ terraform apply \
   -var="client_boot_volume_size_gb=500"
 ```
 
-Defaults: 4 OCPUs, 12 GB memory, 200 GB boot disk per client (see `variables.tf`).
+Defaults: 4 OCPUs, 18 GB memory, 500 GB boot disk per client (see `variables.tf`).
 
 After apply completes, verify the new nodes have joined:
 
