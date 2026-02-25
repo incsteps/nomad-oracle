@@ -51,6 +51,9 @@ runcmd:
     sudo iptables -I INPUT -p tcp --dport 4647 -j ACCEPT
     sudo iptables -I INPUT -p tcp --dport 4648 -j ACCEPT
     sudo iptables -I INPUT -p udp --dport 4648 -j ACCEPT
+    # MinIO S3 API and Console
+    sudo iptables -I INPUT -p tcp --dport 9000 -j ACCEPT
+    sudo iptables -I INPUT -p tcp --dport 9001 -j ACCEPT
 
   # Create secrets directory
   - |

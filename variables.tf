@@ -156,3 +156,9 @@ variable "nf_nomad_plugin_version" {
   default     = "0.4.0-edge2"
   description = "nf-nomad Nextflow plugin version"
 }
+
+variable "minio_default_buckets" {
+  type        = string
+  default     = "nfresults,fusionfs"
+  description = "Comma-separated list of buckets to auto-create on MinIO after deployment"
+}

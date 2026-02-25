@@ -73,101 +73,65 @@ provider "nomad" {
   secret_id = data.external.nomad_bootstrap_token.result.token
 }
 
-# Deploy MinIO job
+# Deploy MinIO job (using Nomad service provider, no Consul dependency)
 resource "nomad_job" "minio" {
   depends_on = [data.external.nomad_bootstrap_token]
-  
-  jobspec = <<-EOJ
-    job "minio" {
-      datacenters = ["dc1"]
-      type        = "service"
-      
-      # Note: MinIO will run on any available node
-      # In production, use node constraints to place on specific nodes with storage
 
-      group "minio" {
-        count = 1
+  jobspec = file("${path.module}/nomad-jobs/minio-updated.nomad")
 
-        network {
-          port "api" {
-            static = 9000
-            to     = 9000
-          }
-          port "console" {
-            static = 9001
-            to     = 9001
-          }
-        }
-
-        task "minio-server" {
-          driver = "docker"
-
-          config {
-            image = "minio/minio:latest"
-            ports = ["api", "console"]
-            
-            args = [
-              "server",
-              "/data",
-              "--console-address",
-              ":9001"
-            ]
-
-            volumes = [
-              "/mnt/minio-data:/data"
-            ]
-          }
-
-          env {
-            MINIO_ROOT_USER     = "${var.minio_root_user}"
-            MINIO_ROOT_PASSWORD = "${var.minio_root_password}"
-            MINIO_BROWSER       = "on"
-          }
-
-          resources {
-            cpu    = 2000  # 2 CPUs
-            memory = 4096  # 4 GB RAM
-          }
-
-          service {
-            name = "minio-api"
-            port = "api"
-            
-            tags = [
-              "minio",
-              "s3",
-              "storage"
-            ]
-
-            check {
-              type     = "http"
-              path     = "/minio/health/live"
-              interval = "10s"
-              timeout  = "2s"
-            }
-          }
-
-          service {
-            name = "minio-console"
-            port = "console"
-            
-            tags = [
-              "minio",
-              "console",
-              "ui"
-            ]
-
-            check {
-              type     = "tcp"
-              interval = "10s"
-              timeout  = "2s"
-            }
-          }
-        }
-      }
-    }
-  EOJ
-  
   # Prevent job from being stopped on destroy
   purge_on_destroy = false
+}
+
+# --------------------------------------------------------------------------
+# Create default buckets and API service account in MinIO
+# Runs after the MinIO Nomad job is deployed and healthy.
+# Uses SSH to run mc (MinIO Client) on the server.
+# --------------------------------------------------------------------------
+resource "null_resource" "minio_init" {
+  depends_on = [nomad_job.minio]
+
+  triggers = {
+    buckets     = var.minio_default_buckets
+    credentials = "${var.minio_api_access_key}-${var.minio_api_secret_key}"
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      SERVER_IP="${module.customer_nomad.nomad_server_public_ip}"
+      SSH_CMD="ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no ubuntu@$SERVER_IP"
+
+      echo "Waiting for MinIO to be healthy..."
+      for i in $(seq 1 30); do
+        if curl -sf "http://$SERVER_IP:${var.minio_api_port}/minio/health/live" > /dev/null 2>&1; then
+          echo "MinIO is healthy"
+          break
+        fi
+        echo "  waiting... ($i/30)"
+        sleep 10
+      done
+
+      echo "Installing mc (MinIO Client) on server if needed..."
+      $SSH_CMD 'command -v mc >/dev/null 2>&1 || {
+        curl -sL https://dl.min.io/client/mc/release/linux-arm64/mc -o /tmp/mc
+        sudo mv /tmp/mc /usr/local/bin/mc
+        sudo chmod +x /usr/local/bin/mc
+      }'          
+
+      echo "Configuring mc alias (using private IP since MinIO binds to host network via Nomad)..."
+      $SSH_CMD "PRIV_IP=\$(hostname -I | awk '{print \$1}') && mc alias set minio http://\$PRIV_IP:${var.minio_api_port} '${var.minio_root_user}' '${var.minio_root_password}'"
+
+      echo "Creating API service account..."
+      $SSH_CMD "mc admin user svcacct add minio '${var.minio_root_user}' \
+        --access-key '${var.minio_api_access_key}' \
+        --secret-key '${var.minio_api_secret_key}' || echo 'Service account may already exist'"
+
+      echo "Creating default buckets..."
+      $SSH_CMD 'for bucket in $(echo "${var.minio_default_buckets}" | tr "," " "); do
+        mc mb --ignore-existing "minio/$bucket"
+      done'
+
+      echo "MinIO buckets and API credentials are ready."
+    EOT
+  }
 }

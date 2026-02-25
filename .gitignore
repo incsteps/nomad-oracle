@@ -26,3 +26,5 @@ nomad-token.env
 **/*token*.env
 
 *.zip
+generated
+results

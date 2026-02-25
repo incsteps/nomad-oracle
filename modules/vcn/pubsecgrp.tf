@@ -23,6 +23,14 @@ resource "oci_core_network_security_group_security_rule" "public_rules" {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.ssh_source_cidr,
       ports = [9001], description = "Allow MinIO Console from user IP"
     },
+    minio_api_ingress_vcn = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports = [9000], description = "Allow MinIO S3 API from VCN (Nomad tasks)"
+    },
+    minio_console_ingress_vcn = {
+      direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
+      ports = [9001], description = "Allow MinIO Console from VCN"
+    },
     nomad_http_ingress_vcn = {
       direction = "INGRESS", protocol = "6", source_type = "CIDR_BLOCK", source = var.vcn_cidr_block,
       ports = [4646], description = "Allow Nomad HTTP API from VCN"
