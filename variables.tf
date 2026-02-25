@@ -120,3 +120,39 @@ variable "minio_root_password" {
   description = "MinIO root password"
   sensitive   = true
 }
+
+variable "minio_api_access_key" {
+  type        = string
+  description = "MinIO API access key (service account). Used in generated Nextflow config."
+  sensitive   = true
+}
+
+variable "minio_api_secret_key" {
+  type        = string
+  description = "MinIO API secret key (service account). Used in generated Nextflow config."
+  sensitive   = true
+}
+
+variable "minio_api_port" {
+  type        = number
+  default     = 9000
+  description = "Port for MinIO S3 API on the server"
+}
+
+variable "minio_console_port" {
+  type        = number
+  default     = 9001
+  description = "Port for MinIO web console on the server"
+}
+
+variable "fusionfs_bucket" {
+  type        = string
+  default     = "fusionfs"
+  description = "S3 bucket name for Nextflow FusionFS workDir"
+}
+
+variable "nf_nomad_plugin_version" {
+  type        = string
+  default     = "0.4.0-edge2"
+  description = "nf-nomad Nextflow plugin version"
+}

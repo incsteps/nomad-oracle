@@ -59,3 +59,40 @@ output "minio_credentials" {
   description = "MinIO access credentials"
   sensitive   = true
 }
+
+output "s3_endpoint" {
+  value       = local.minio_endpoint
+  description = "MinIO S3 endpoint (auto-computed from server IP)"
+}
+
+output "fusionfs_bucket" {
+  value       = var.fusionfs_bucket
+  description = "S3 bucket for Nextflow FusionFS workDir"
+}
+
+output "usage" {
+  value = <<-EOT
+
+    === OCI Nomad + MinIO ===
+
+    Nextflow configs have been auto-generated in generated/.
+
+    1. Source the env file:
+       source generated/env.sh     # bash/zsh
+       source generated/env.fish   # fish
+
+    2. Run with FusionFS + MinIO (S3 workDir via MinIO on server):
+       nextflow run nextflow-io/hello -c generated/nextflow.config -profile fusion_minio
+
+    3. Run with FusionFS + OCI Object Storage:
+       nextflow run nextflow-io/hello -c generated/nextflow.config -profile fusion_oci
+
+    4. Nomad UI:       ${local.nomad_public_endpoint}
+    5. MinIO console:  http://${module.customer_nomad.nomad_server_public_ip}:${var.minio_console_port}
+
+    6. Tear down:
+       terraform destroy
+
+  EOT
+  description = "Usage instructions"
+}

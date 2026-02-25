@@ -1,0 +1,44 @@
+plugins {
+    id "nf-nomad@0.4.0-edge2"
+}
+
+process {
+    executor = "nomad"
+}
+
+docker {
+    enabled = true
+}
+
+// MinIO S3-compatible storage configuration
+aws {
+    region = 'us-east-1'  // MinIO doesn't care about region, but must be set
+    
+    accessKey = 'minioadmin'
+    secretKey = 'minioadmin123'
+    
+    client {
+        // MinIO endpoint on Nomad server
+        endpoint = 'http://92.4.139.74:9000'
+        protocol = 'http'
+        s3PathStyleAccess = true
+        
+        // MinIO supports chunked encoding, so no special config needed
+    }
+}
+
+// Fusion and Wave for advanced features
+wave.enabled = true
+fusion.enabled = true
+fusion.exportStorageCredentials = true
+
+nomad {
+    client {
+        // Nomad server public IP
+        address = "http://92.4.139.74:4646"
+    }
+
+    jobs {
+        deleteOnCompletion = false
+    }
+}
